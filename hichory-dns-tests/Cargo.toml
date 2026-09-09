@@ -1,0 +1,21 @@
+[package]
+name = "hichory-dns-tests"
+version = "0.1.0"
+edition = "2021"
+description = "DNS / DoT / DoH / ECH network status probe, built on Hickory DNS and rustls."
+
+[[bin]]
+name = "hichory-dns-tests"
+path = "src/main.rs"
+
+[dependencies]
+hickory-resolver = { version = "0.26", features = ["tls-aws-lc-rs", "https-aws-lc-rs", "webpki-roots"] }
+rustls = "0.23"
+webpki-roots = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+time = { version = "0.3", features = ["formatting"] }
+
+[profile.release]
+opt-level = 2
