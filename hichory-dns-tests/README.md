@@ -53,19 +53,50 @@ network issue with.
 You need a Rust toolchain — [rustup](https://rustup.rs/) is the easiest
 way to get one if you don't have it already.
 
+### Static build (recommended for deploying to a server)
+
+A normal `cargo build --release` dynamically links against the glibc on
+your build machine. Copy that binary to a server running an older glibc
+and it'll fail to even start:
+
+```
+./hichory-dns-tests: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.38' not found
+```
+
+To avoid any runtime dependency on the target machine's glibc version,
+build a fully static binary against musl instead:
+
+```sh
+rustup target add x86_64-unknown-linux-musl
+sudo apt-get install -y musl-tools   # provides musl-gcc, needed to build aws-lc-rs
+cd hichory-dns-tests
+cargo build --release --target x86_64-unknown-linux-musl
+```
+
+The binary ends up at
+`target/x86_64-unknown-linux-musl/release/hichory-dns-tests`. Verify it
+has no dynamic dependencies with `ldd` (it should print `statically
+linked` or `not a dynamic executable`) — that binary can be copied to
+any x86_64 Linux server and run as-is, regardless of its glibc version.
+
+### Regular build
+
 ```sh
 cd hichory-dns-tests
 cargo build --release
 ```
 
-The binary ends up at `target/release/hichory-dns-tests`.
+The binary ends up at `target/release/hichory-dns-tests`, dynamically
+linked against your build machine's glibc — fine for local use, but only
+copy it to another machine if that machine's glibc is the same version
+or newer.
 
 ## Running it
 
 Just run it with no arguments to use the defaults:
 
 ```sh
-./target/release/hichory-dns-tests
+./target/x86_64-unknown-linux-musl/release/hichory-dns-tests
 ```
 
 or during development, straight through cargo:
