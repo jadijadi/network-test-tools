@@ -4,6 +4,8 @@ stages:
 build-hickory-dns-tests:
   stage: build
   image: rust:latest
+  tags:
+    - docker
   variables:
     CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
   cache:
