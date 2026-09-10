@@ -114,7 +114,7 @@ fn probe_sync(params: ProbeParams) -> anyhow::Result<ProbeResult> {
     let mut tls = StreamOwned::new(conn, &mut sock);
 
     let request = format!(
-        "GET /{path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nAccept-Encoding: identity\r\nUser-Agent: hichory-dns-tests/0.1\r\n\r\n",
+        "GET /{path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\nAccept-Encoding: identity\r\nUser-Agent: hickory-dns-tests/0.1\r\n\r\n",
         path = params.path.trim_start_matches('/'),
         host = params.http_host,
     );

@@ -1,4 +1,4 @@
-# hichory-dns-tests
+# hickory-dns-tests
 
 A little command-line tool that checks how healthy DNS is on the network
 it's run from: plain DNS, DNS-over-TLS, DNS-over-HTTPS, and Encrypted
@@ -60,7 +60,7 @@ your build machine. Copy that binary to a server running an older glibc
 and it'll fail to even start:
 
 ```
-./hichory-dns-tests: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.38' not found
+./hickory-dns-tests: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.38' not found
 ```
 
 To avoid any runtime dependency on the target machine's glibc version,
@@ -69,12 +69,12 @@ build a fully static binary against musl instead:
 ```sh
 rustup target add x86_64-unknown-linux-musl
 sudo apt-get install -y musl-tools   # provides musl-gcc, needed to build aws-lc-rs
-cd hichory-dns-tests
+cd hickory-dns-tests
 cargo build --release --target x86_64-unknown-linux-musl
 ```
 
 The binary ends up at
-`target/x86_64-unknown-linux-musl/release/hichory-dns-tests`. Verify it
+`target/x86_64-unknown-linux-musl/release/hickory-dns-tests`. Verify it
 has no dynamic dependencies with `ldd` (it should print `statically
 linked` or `not a dynamic executable`) — that binary can be copied to
 any x86_64 Linux server and run as-is, regardless of its glibc version.
@@ -82,11 +82,11 @@ any x86_64 Linux server and run as-is, regardless of its glibc version.
 ### Regular build
 
 ```sh
-cd hichory-dns-tests
+cd hickory-dns-tests
 cargo build --release
 ```
 
-The binary ends up at `target/release/hichory-dns-tests`, dynamically
+The binary ends up at `target/release/hickory-dns-tests`, dynamically
 linked against your build machine's glibc — fine for local use, but only
 copy it to another machine if that machine's glibc is the same version
 or newer.
@@ -96,7 +96,7 @@ or newer.
 Just run it with no arguments to use the defaults:
 
 ```sh
-./target/x86_64-unknown-linux-musl/release/hichory-dns-tests
+./target/x86_64-unknown-linux-musl/release/hickory-dns-tests
 ```
 
 or during development, straight through cargo:
@@ -124,12 +124,12 @@ somewhere on the path, you'd expect the "true" run to fail to negotiate
 ECH, time out, or otherwise not match that pattern.
 
 A log file is also written next to wherever you run the tool, named
-`hichory-dns-tests-<timestamp>.log`.
+`hickory-dns-tests-<timestamp>.log`.
 
 ### Options
 
 ```
-hichory-dns-tests [OPTIONS]
+hickory-dns-tests [OPTIONS]
 
       --doh-target <DOH_TARGET>              Plain HTTPS/DoH target [default: cloudflare.com]
       --ech-target <ECH_TARGET>              ECH test domain (must publish an ECH config and
@@ -144,14 +144,14 @@ hichory-dns-tests [OPTIONS]
                                               seconds [default: 12]
       --repeat <REPEAT>                      Trials per arm for the ECH-on/off stall comparison
                                               [default: 3]
-      --log <LOG>                            Log file path [default: hichory-dns-tests-<timestamp>.log]
+      --log <LOG>                            Log file path [default: hickory-dns-tests-<timestamp>.log]
   -h, --help                                 Print help
 ```
 
 For example, to point it at a different site and run more stall trials:
 
 ```sh
-./target/release/hichory-dns-tests --doh-target example.com --repeat 5
+./target/release/hickory-dns-tests --doh-target example.com --repeat 5
 ```
 
 The three resolvers it tests against (1.1.1.1, 8.8.8.8, 9.9.9.9) are

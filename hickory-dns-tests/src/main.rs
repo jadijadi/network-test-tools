@@ -50,7 +50,7 @@ struct Args {
     #[arg(long, default_value_t = 3)]
     repeat: u32,
 
-    /// Log file path. Defaults to hichory-dns-tests-<timestamp>.log in the current directory.
+    /// Log file path. Defaults to hickory-dns-tests-<timestamp>.log in the current directory.
     #[arg(long)]
     log: Option<PathBuf>,
 }
@@ -68,7 +68,7 @@ fn prefer_v4(ips: impl Iterator<Item = IpAddr>) -> Option<IpAddr> {
 fn default_log_path() -> PathBuf {
     let now = time::OffsetDateTime::now_utc();
     PathBuf::from(format!(
-        "hichory-dns-tests-{:04}{:02}{:02}-{:02}{:02}{:02}.log",
+        "hickory-dns-tests-{:04}{:02}{:02}-{:02}{:02}{:02}.log",
         now.year(),
         now.month() as u8,
         now.day(),

@@ -1,24 +1,24 @@
 stages:
   - build
 
-build-hichory-dns-tests:
+build-hickory-dns-tests:
   stage: build
   image: rust:latest
   variables:
     CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
   cache:
-    key: hichory-dns-tests-musl
+    key: hickory-dns-tests-musl
     paths:
       - .cargo/
-      - hichory-dns-tests/target/
+      - hickory-dns-tests/target/
   before_script:
     - rustup target add x86_64-unknown-linux-musl
     - apt-get update -qq && apt-get install -y -qq musl-tools
   script:
-    - cd hichory-dns-tests
+    - cd hickory-dns-tests
     - cargo build --release --target x86_64-unknown-linux-musl
   artifacts:
-    name: "hichory-dns-tests-${CI_COMMIT_SHORT_SHA}"
+    name: "hickory-dns-tests-${CI_COMMIT_SHORT_SHA}"
     paths:
-      - hichory-dns-tests/target/x86_64-unknown-linux-musl/release/hichory-dns-tests
+      - hickory-dns-tests/target/x86_64-unknown-linux-musl/release/hickory-dns-tests
     expire_in: 4 weeks
