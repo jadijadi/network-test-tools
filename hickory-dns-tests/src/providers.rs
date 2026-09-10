@@ -1,4 +1,7 @@
 use std::net::IpAddr;
+use std::sync::Arc;
+
+use hickory_resolver::config::NameServerConfig;
 
 /// A DNS resolver we probe against: plain DNS, DoT and DoH all use the same IP.
 #[derive(Clone, Copy, Debug)]
@@ -31,3 +34,28 @@ pub const PROVIDERS: &[Provider] = &[
         doh_path: "/dns-query",
     },
 ];
+
+impl Provider {
+    /// Every transport this provider answers on, ordered so the two an on-path filter can
+    /// read and rewrite come first and the two it cannot come last. Checks that ask the
+    /// same question over all four treat the encrypted answers as ground truth for the
+    /// plain ones.
+    pub fn transports(&self) -> [(&'static str, NameServerConfig); 4] {
+        [
+            ("udp", NameServerConfig::udp(self.ip)),
+            ("tcp", NameServerConfig::tcp(self.ip)),
+            (
+                "dot",
+                NameServerConfig::tls(self.ip, Arc::from(self.tls_name)),
+            ),
+            (
+                "doh",
+                NameServerConfig::https(
+                    self.ip,
+                    Arc::from(self.tls_name),
+                    Some(Arc::from(self.doh_path)),
+                ),
+            ),
+        ]
+    }
+}

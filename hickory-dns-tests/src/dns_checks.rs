@@ -22,17 +22,26 @@ fn summarize(answers: &[hickory_resolver::proto::rr::Record]) -> String {
     format!("{} answer(s): {}", rdata.len(), rdata.join(" | "))
 }
 
+/// Build a resolver that sends every query to `ns` and nowhere else.
+pub fn resolver(
+    ns: NameServerConfig,
+    timeout: Duration,
+) -> anyhow::Result<hickory_resolver::TokioResolver> {
+    let config = ResolverConfig::from_name_servers(vec![ns]);
+    Ok(
+        Resolver::builder_with_config(config, TokioRuntimeProvider::default())
+            .with_options(opts(timeout))
+            .build()?,
+    )
+}
+
 async fn lookup_with(
     ns: NameServerConfig,
     name: &str,
     rtype: RecordType,
     timeout: Duration,
 ) -> anyhow::Result<String> {
-    let config = ResolverConfig::from_name_servers(vec![ns]);
-    let resolver = Resolver::builder_with_config(config, TokioRuntimeProvider::default())
-        .with_options(opts(timeout))
-        .build()?;
-    let lookup = resolver.lookup(name, rtype).await?;
+    let lookup = resolver(ns, timeout)?.lookup(name, rtype).await?;
     Ok(summarize(lookup.answers()))
 }
 
@@ -101,10 +110,8 @@ pub fn doh_resolver(
     doh_path: &str,
     timeout: Duration,
 ) -> anyhow::Result<hickory_resolver::TokioResolver> {
-    let ns = NameServerConfig::https(ip, Arc::from(tls_name), Some(Arc::from(doh_path)));
-    let config = ResolverConfig::from_name_servers(vec![ns]);
-    let resolver = Resolver::builder_with_config(config, TokioRuntimeProvider::default())
-        .with_options(opts(timeout))
-        .build()?;
-    Ok(resolver)
+    resolver(
+        NameServerConfig::https(ip, Arc::from(tls_name), Some(Arc::from(doh_path))),
+        timeout,
+    )
 }

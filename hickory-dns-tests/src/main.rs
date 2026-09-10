@@ -3,12 +3,15 @@ mod ech;
 mod providers;
 mod report;
 mod tls_probe;
+mod txt_checks;
 
 use std::net::{IpAddr, ToSocketAddrs};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use clap::Parser;
+use hickory_resolver::config::NameServerConfig;
 use hickory_resolver::proto::rr::RecordType;
 
 use providers::PROVIDERS;
@@ -50,6 +53,26 @@ struct Args {
     #[arg(long, default_value_t = 3)]
     repeat: u32,
 
+    /// Names with well-known, stable TXT records, checked over every transport. Repeat the
+    /// flag or comma-separate to add your own.
+    #[arg(
+        long,
+        value_delimiter = ',',
+        default_values_t = [String::from("google.com"), String::from("cloudflare.com")]
+    )]
+    txt_target: Vec<String>,
+
+    /// Name publishing an unusually large TXT set, used to check whether an answer too big
+    /// for UDP survives truncation and the retry over TCP.
+    #[arg(long, default_value = "microsoft.com")]
+    txt_large_target: String,
+
+    /// Base domain for the tunnel-shaped probe: a long random label is queried under it, so
+    /// every answer should be a clean negative (NXDOMAIN, or NODATA if the zone answers for
+    /// names under it).
+    #[arg(long, default_value = "example.com")]
+    txt_random_base: String,
+
     /// Log file path. Defaults to hickory-dns-tests-<timestamp>.log in the current directory.
     #[arg(long)]
     log: Option<PathBuf>,
@@ -76,6 +99,53 @@ fn default_log_path() -> PathBuf {
         now.minute(),
         now.second()
     ))
+}
+
+/// Asks every provider for one name's TXT records over all four transports, with an
+/// A-record control for the same name, and logs a verdict per plain transport. Comparing a
+/// provider against *itself* over an encrypted transport - rather than against another
+/// provider - keeps the finding about the network path and not about the resolver.
+async fn txt_across_transports(report: &mut Report, name: &str, timeout: Duration) {
+    for p in PROVIDERS {
+        let mut answers: Vec<(&'static str, Option<txt_checks::Answer>)> = Vec::new();
+        for (transport, ns) in p.transports() {
+            let answer = report
+                .run(
+                    &format!("txt-{transport}-{}-{name}", p.name),
+                    timeout,
+                    txt_checks::query(ns, name, RecordType::TXT, timeout),
+                )
+                .await;
+            answers.push((transport, answer));
+        }
+
+        let a_control = report
+            .run(
+                &format!("txt-control-a-udp-{}-{name}", p.name),
+                timeout,
+                txt_checks::query(NameServerConfig::udp(p.ip), name, RecordType::A, timeout),
+            )
+            .await;
+
+        let answer = |want: &str| {
+            answers
+                .iter()
+                .find(|(transport, _)| *transport == want)
+                .and_then(|(_, answer)| answer.as_ref())
+        };
+        // DoH is the ground truth; DoT is the fallback for when DoH itself is blocked.
+        let control = answer("doh").or_else(|| answer("dot"));
+        for plain in ["udp", "tcp"] {
+            report.line(&format!(
+                "  {name} via {}/{plain}: {}",
+                p.name,
+                txt_checks::verdict(answer(plain), control)
+            ));
+        }
+        if let Some(finding) = txt_checks::txt_specific(a_control.as_ref(), answer("udp")) {
+            report.line(&format!("  {name} via {}: {finding}", p.name));
+        }
+    }
 }
 
 #[tokio::main]
@@ -345,6 +415,75 @@ async fn main() -> anyhow::Result<()> {
         }
     } else {
         report.line("  skipping stall comparison: could not resolve stall target");
+    }
+
+    // ---- 8. TXT records: dropped, emptied or rewritten on the plain-DNS path? ----
+    report.line("\n=== 8. TXT record filtering ===");
+    report.line(
+        "  TXT carries free-form text and is what DNS tunnels ride on, so filters single it\n\
+        \x20 out. Each name is asked over plain UDP/TCP and over the same resolver's DoT/DoH,\n\
+        \x20 which the network cannot read; the encrypted answer is the ground truth.",
+    );
+    for name in &args.txt_target {
+        report.line(&format!("\n-- {name} --"));
+        txt_across_transports(&mut report, name, timeout).await;
+    }
+
+    report.line("\n=== 8b. Large TXT answers (truncation and TCP fallback) ===");
+    report.line(&format!(
+        "  {} publishes an unusually large TXT set, so the UDP answer is expected to come\n\
+        \x20 back truncated: the tcp line is the real test, because the retry over TCP is a\n\
+        \x20 step some middleboxes drop on its own.",
+        args.txt_large_target
+    ));
+    txt_across_transports(&mut report, &args.txt_large_target, timeout).await;
+
+    report.line("\n=== 8c. Tunnel-shaped TXT queries ===");
+    report.line(&format!(
+        "  A long random label under {}, asked as TXT: the shape DPI fingerprints to spot DNS\n\
+        \x20 tunnelling. Every answer should be a clean negative, and the same name asked as A\n\
+        \x20 is the control.",
+        args.txt_random_base
+    ));
+    for p in PROVIDERS {
+        // A fresh label per provider, so no probe can be answered from a negative cache
+        // entry left behind by the previous one.
+        let name = format!("{}.{}", txt_checks::random_label(), args.txt_random_base);
+        let txt_plain = report
+            .run(
+                &format!("txt-tunnel-udp-{}", p.name),
+                timeout,
+                txt_checks::query(NameServerConfig::udp(p.ip), &name, RecordType::TXT, timeout),
+            )
+            .await;
+        let a_plain = report
+            .run(
+                &format!("txt-tunnel-control-a-udp-{}", p.name),
+                timeout,
+                txt_checks::query(NameServerConfig::udp(p.ip), &name, RecordType::A, timeout),
+            )
+            .await;
+        let txt_control = report
+            .run(
+                &format!("txt-tunnel-doh-{}", p.name),
+                timeout,
+                txt_checks::query(
+                    NameServerConfig::https(
+                        p.ip,
+                        Arc::from(p.tls_name),
+                        Some(Arc::from(p.doh_path)),
+                    ),
+                    &name,
+                    RecordType::TXT,
+                    timeout,
+                ),
+            )
+            .await;
+        report.line(&format!(
+            "  {}: {}",
+            p.name,
+            txt_checks::tunnel_verdict(txt_plain.as_ref(), a_plain.as_ref(), txt_control.as_ref())
+        ));
     }
 
     report.mark("All tests complete");

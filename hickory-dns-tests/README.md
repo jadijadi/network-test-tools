@@ -14,8 +14,9 @@ a guess.
 
 ## What it actually does
 
-It runs through the same seven checks as the bash version, against three
-public resolvers (Cloudflare, Google, Quad9) by default:
+It runs through the same seven checks as the bash version, plus a set of
+TXT-record checks the bash version doesn't have, against three public
+resolvers (Cloudflare, Google, Quad9) by default:
 
 1. **Plain DNS** — UDP and TCP queries against each resolver, so you can
    see if UDP/53 is being dropped while TCP/53 still works (a classic sign
@@ -39,6 +40,30 @@ public resolvers (Cloudflare, Google, Quad9) by default:
    whether hiding the SNI with ECH makes the stall go away (which would
    point at SNI-based DPI) or not (which would point at something else,
    like IP or volume-based blocking).
+8. **TXT record filtering** — TXT is the record type that gets singled out
+   most: it carries free-form text and it's what DNS tunnels ride on, so
+   filters that leave A/AAAA alone will happily drop, empty out or rewrite
+   TXT. A single TXT lookup proves nothing on its own, though, so every
+   check here is a *comparison* — the same name asked over plain UDP/TCP
+   and over that same resolver's DoT/DoH, which the network can't read.
+   The encrypted answer is the ground truth; a difference between the two
+   is the finding. It comes in three parts:
+   - **8** — well-known, stable TXT records (`google.com`,
+     `cloudflare.com` by default), each with an A-record control for the
+     same name. If A comes back over plain UDP and TXT doesn't, that's
+     flagged as `TXT-SPECIFIC` — nothing about a broken route or an
+     unreachable resolver explains that, only a filter that treats TXT
+     differently.
+   - **8b** — a name with an unusually large TXT set (`microsoft.com`).
+     The answer doesn't fit in a UDP packet, so it comes back truncated
+     and has to be retried over TCP — a step some middleboxes drop on its
+     own. The `udp` line is expected to say `TRUNCATED` here; the `tcp`
+     line is the real test.
+   - **8c** — a long random label queried as TXT, which is the shape DPI
+     uses to fingerprint DNS tunnelling. Every answer should be a clean
+     negative; the same name asked as A is the control. If the TXT query
+     gets nothing while the A query is answered, long high-entropy labels
+     are being filtered for TXT specifically.
 
 Every check runs under a hard timeout, so one hung connection can't eat
 the whole run — the original bash script actually lost ~300 seconds to
@@ -115,7 +140,17 @@ MARKER[...]: START dns-udp-A-cloudflare
 === 6. ECH ground truth (cdn-cgi/trace) ===
   OK   ech-true-groundtruth (0.146s): ... ech_status: Some("Accepted") ... trace_sni: Some("sni=encrypted")
   OK   ech-false-groundtruth (0.075s): ... ech_status: Some("NotOffered") ... trace_sni: Some("sni=plaintext")
+...
+=== 8. TXT record filtering ===
+-- google.com --
+  OK   txt-udp-cloudflare-google.com (0.013s): 17 record(s), 927 byte(s): MS=E4A68B9A... | v=spf1 include:_spf.google.com ~all | ...
+  google.com via cloudflare/udp: OK: the plain path returned exactly the records the encrypted control did
+  google.com via cloudflare/tcp: OK: the plain path returned exactly the records the encrypted control did
 ```
+
+On a network that *is* filtering TXT, the same lines would instead read
+`BLOCKED`, `TAMPERED`, or — the clearest of them —
+`TXT-SPECIFIC: A records come back over plain UDP but TXT does not`.
 
 That `Accepted` / `sni=encrypted` pairing on the "true" run and
 `NotOffered` / `sni=plaintext` on the "false" run is what a working,
@@ -144,6 +179,16 @@ hickory-dns-tests [OPTIONS]
                                               seconds [default: 12]
       --repeat <REPEAT>                      Trials per arm for the ECH-on/off stall comparison
                                               [default: 3]
+      --txt-target <TXT_TARGET>              Names with well-known, stable TXT records, checked
+                                              over every transport; repeat the flag or
+                                              comma-separate to add your own
+                                              [default: google.com cloudflare.com]
+      --txt-large-target <TXT_LARGE_TARGET>  Name publishing an unusually large TXT set, to check
+                                              whether truncation and the TCP retry survive
+                                              [default: microsoft.com]
+      --txt-random-base <TXT_RANDOM_BASE>    Base domain for the tunnel-shaped probe; a long
+                                              random label is queried under it
+                                              [default: example.com]
       --log <LOG>                            Log file path [default: hickory-dns-tests-<timestamp>.log]
   -h, --help                                 Print help
 ```
@@ -152,6 +197,12 @@ For example, to point it at a different site and run more stall trials:
 
 ```sh
 ./target/release/hickory-dns-tests --doh-target example.com --repeat 5
+```
+
+Or to check TXT filtering against domains you care about:
+
+```sh
+./target/release/hickory-dns-tests --txt-target example.org,_dmarc.example.org
 ```
 
 The three resolvers it tests against (1.1.1.1, 8.8.8.8, 9.9.9.9) are
@@ -170,5 +221,10 @@ need different resolvers, that's the file to edit.
   itself still has its own read/write timeout, so it'll clean itself up
   shortly after, but you may see a "TIMEOUT" logged slightly before the
   underlying attempt has fully given up.
+- **A `TRUNCATED` verdict is not a finding.** Each TXT probe pins one
+  transport on purpose, so a UDP probe has no TCP connection to promote a
+  truncated answer to. Any TXT set larger than a UDP packet will say
+  `TRUNCATED` on the `udp` line even on a completely unfiltered network —
+  read the `tcp` line for that name instead.
 - There's no packet capture (`tcpdump`) built in, unlike the bash version.
   If you need a pcap alongside a run, capture it separately.
