@@ -1,2 +1,4 @@
 /target
 /net-status-*.log
+/l2-connectivity/l2-connectivity
+/.go/

@@ -24,3 +24,28 @@ build-hickory-dns-tests:
     paths:
       - hickory-dns-tests/target/x86_64-unknown-linux-musl/release/hickory-dns-tests
     expire_in: 4 weeks
+
+build-l2-connectivity:
+  stage: build
+  image: golang:latest
+  tags:
+    - docker
+  variables:
+    GOPATH: ${CI_PROJECT_DIR}/.go
+    CGO_ENABLED: "0"
+    GOOS: linux
+    GOARCH: amd64
+  cache:
+    key: l2-connectivity-go
+    paths:
+      - .go/pkg/mod/
+  script:
+    - cd l2-connectivity
+    - go vet ./...
+    - go test ./...
+    - go build -trimpath -ldflags="-s -w" -o l2-connectivity .
+  artifacts:
+    name: "l2-connectivity-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - l2-connectivity/l2-connectivity
+    expire_in: 4 weeks
