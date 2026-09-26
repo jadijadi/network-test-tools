@@ -3,6 +3,7 @@ name = "hickory-dns-tests"
 version = "0.1.0"
 edition = "2021"
 description = "DNS / DoT / DoH / ECH network status probe, built on Hickory DNS and rustls."
+license = "MIT"
 
 [[bin]]
 name = "hickory-dns-tests"
