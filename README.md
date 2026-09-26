@@ -3,8 +3,8 @@
 Small command-line tools for checking what a network actually lets through.
 
 | Tool | What it checks |
-|------|----------------|
-| [`hickory-dns-tests/`](hickory-dns-tests/) | Plain DNS, DoT, DoH and ECH. Rust. |
+| --- | --- |
+| [`hickory-dns-tests/`](hickory-dns-tests/) | Plain DNS, DoT, DoH and ECH. Rust. Deliberately built on [Hickory DNS](https://hickory-dns.org/) because the point is to test how that specific library behaves on the network. |
 | [`test_dns_doh_ech.sh`](test_dns_doh_ech.sh) | The original bash version of the DNS checks. |
 | [`l2-connectivity/`](l2-connectivity/) | Layer 2 reachability between machines using raw Ethernet frames: RTT, loss and MTU matrix. Go, Linux, needs root. |
 
